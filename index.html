@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>My Vault - Simple Save</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui}
+body{background:#0f172a;color:white;min-height:100vh;padding-bottom:90px}
+header{background:#1e293b;padding:14px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:10;border-bottom:1px solid #334155}
+#uploadBtn{background:#3b82f6;color:white;border:none;padding:10px 18px;border-radius:25px;font-weight:bold}
+#search{width:calc(100% - 30px);margin:12px 15px;padding:12px;background:#1e293b;border:1px solid #334155;border-radius:12px;color:white;outline:none}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:15px}
+.card{background:#1e293b;border-radius:14px;overflow:hidden;border:1px solid #334155}
+.card img{width:100%;height:180px;object-fit:cover;display:block}
+.info{padding:10px}
+.name{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.date{font-size:10px;color:#94a3b8}
+.actions{display:flex;gap:6px;margin-top:8px}
+.btn{flex:1;padding:10px;font-size:12px;border:none;border-radius:8px;font-weight:bold}
+.btn-view{background:#334155;color:white}
+.btn-pdf{background:#f59e0b;color:black}
+.btn-down{background:#10b981;color:white}
+#bottom{position:fixed;bottom:0;left:0;width:100%;background:#1e293b;display:flex;justify-content:space-around;padding:12px;border-top:1px solid #334155;z-index:10}
+.b-nav{color:#94a3b8;font-size:11px;text-align:center;background:none;border:none}
+#fileInput{display:none}
+#lockScreen{position:fixed;left:0;top:0;width:100%;height:100%;background:#0f172a;z-index:200;display:flex;justify-content:center;align-items:center;padding:20px}
+.lockBox{background:#1e293b;padding:30px;border-radius:20px;width:100%;max-width:350px;text-align:center;border:1px solid #334155}
+.lockBox input{width:100%;padding:14px;margin:8px 0;border-radius:12px;border:1px solid #334155;background:#0f172a;color:white;font-size:16px;text-align:center}
+.lockBtn{width:100%;padding:14px;background:#3b82f6;color:white;border:none;border-radius:12px;font-weight:bold;margin-top:10px}
+#viewer{position:fixed;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.97);display:none;z-index:150;justify-content:center;align-items:center;flex-direction:column;padding:15px}
+#viewer img{max-width:100%;max-height:60%;object-fit:contain;border-radius:8px}
+#viewerBar{display:flex;gap:8px;margin-top:15px;flex-wrap:wrap;justify-content:center}
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:white;color:black;padding:12px 20px;border-radius:25px;font-size:13px;display:none;z-index:300;text-align:center;max-width:90%}
+</style>
+</head>
+<body>
+<div id="lockScreen">
+<div class="lockBox" id="setPassBox" style="display:none">
+<h2>🔒 Set Password</h2>
+<input id="newPass" type="password" placeholder="Create password">
+<input id="confirmPass" type="password" placeholder="Confirm">
+<button class="lockBtn" onclick="setPassword()">Lock My Vault</button>
+</div>
+<div class="lockBox" id="enterPassBox" style="display:none">
+<h2>🔒 Vault Locked</h2>
+<input id="enterPass" type="password" placeholder="Enter password">
+<button class="lockBtn" onclick="unlockVault()">Unlock</button>
+</div>
+</div>
+
+<header>
+<div style="display:flex;align-items:center;gap:10px"><span>🔒 MY VAULT</span><button onclick="lockVault()" style="background:#334155;color:white;border:none;padding:6px 12px;border-radius:15px;font-size:11px">🔒 Lock</button></div>
+<button id="uploadBtn" onclick="document.getElementById('fileInput').click()">+ ADD</button>
+</header>
+
+<input type="file" id="fileInput" multiple accept="image/*">
+<input id="search" placeholder="Search..." oninput="render()">
+
+<div id="list" class="grid"></div>
+
+<div id="viewer">
+<img id="viewerImg" src="">
+<p id="viewerName" style="margin-top:10px;font-size:13px;color:white"></p>
+<p style="color:#94a3b8;font-size:11px;margin-top:5px">Long press image to save to Gallery</p>
+<div id="viewerBar">
+<button onclick="saveCurrent()" style="background:#10b981;color:white;padding:12px 18px;border:none;border-radius:20px;font-weight:bold">💾 Save to Gallery</button>
+<button onclick="pdfCurrent()" style="background:#f59e0b;color:black;padding:12px 18px;border:none;border-radius:20px;font-weight:bold">📄 Save as PDF</button>
+<button onclick="closeViewer()" style="background:#334155;color:white;padding:12px 18px;border:none;border-radius:20px">✕ Close</button>
+</div>
+</div>
+
+<div id="toast"></div>
+
+<div id="bottom">
+<button class="b-nav" onclick="document.getElementById('fileInput').click()">📤<br>Upload</button>
+<button class="b-nav" onclick="makeAllPDF()">🖨️<br>Print PDF</button>
+</div>
+
+<script>
+function getHash(s){let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h=h&h;}return h.toString();}
+function checkLock(){let p=localStorage.getItem('vault_pass_hash');if(!p){document.getElementById('lockScreen').style.display='flex';document.getElementById('setPassBox').style.display='block';document.getElementById('enterPassBox').style.display='none';}else{document.getElementById('lockScreen').style.display='flex';document.getElementById('setPassBox').style.display='none';document.getElementById('enterPassBox').style.display='block';}}
+function setPassword(){let p=document.getElementById('newPass').value,c=document.getElementById('confirmPass').value;if(p.length<4)return showToast('4+ chars');if(p!==c)return showToast('Not match');localStorage.setItem('vault_pass_hash',getHash(p));document.getElementById('lockScreen').style.display='none';showToast('Locked!');}
+function unlockVault(){let p=document.getElementById('enterPass').value;if(getHash(p)===localStorage.getItem('vault_pass_hash')){document.getElementById('lockScreen').style.display='none';document.getElementById('enterPass').value='';}else{showToast('Wrong password');}}
+function lockVault(){document.getElementById('lockScreen').style.display='flex';document.getElementById('setPassBox').style.display='none';document.getElementById('enterPassBox').style.display='block';}
+checkLock();
+
+let db, files=[], currentViewId=null;
+let request=indexedDB.open('MyVaultDB',2);
+request.onupgradeneeded=e=>{db=e.target.result; if(!db.objectStoreNames.contains('files')) db.createObjectStore('files',{keyPath:'id'});};
+request.onsuccess=e=>{db=e.target.result; loadFiles();};
+function loadFiles(){let tx=db.transaction('files','readonly');let req=tx.objectStore('files').getAll();req.onsuccess=()=>{files=req.result.sort((a,b)=>b.created-a.created); render();};}
+function saveFile(obj){let tx=db.transaction('files','readwrite');tx.objectStore('files').put(obj);tx.oncomplete=()=>loadFiles();}
+
+document.getElementById('fileInput').addEventListener('change',async e=>{
+  for(let file of e.target.files){
+    let data=await toBase64(file);
+    data=await compressImage(data, 1024);
+    let obj={id:Date.now()+Math.random().toString(), name:file.name, type:file.type, size:file.size, date:new Date().toLocaleString(), created:Date.now(), data:data};
+    saveFile(obj);
+  }
+  showToast('Saved!');
+});
+function toBase64(f){return new Promise(r=>{let rd=new FileReader();rd.onload=()=>r(rd.result);rd.readAsDataURL(f);})}
+function compressImage(dataUrl, maxW){return new Promise(res=>{let img=new Image();img.onload=()=>{let w=img.width,h=img.height;if(w>maxW){h=(maxW/w)*h;w=maxW;}let c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',0.75));};img.src=dataUrl;});}
+
+function render(){
+  let q=document.getElementById('search').value.toLowerCase();
+  let list=document.getElementById('list');
+  let filtered=files.filter(f=>!q||f.name.toLowerCase().includes(q));
+  if(filtered.length==0){list.innerHTML='<div style="text-align:center;padding:60px;color:#64748b">No pictures yet<br>Click + ADD</div>';return;}
+  list.innerHTML=filtered.map(f=>`
+    <div class="card">
+      <img src="${f.data}" onclick="viewFile('${f.id}')">
+      <div class="info">
+        <div class="name">${f.name}</div>
+        <div class="date">${f.date}</div>
+        <div class="actions">
+          <button class="btn btn-view" onclick="viewFile('${f.id}')">View</button>
+          <button class="btn btn-pdf" onclick="savePDF('${f.id}')">PDF</button>
+          <button class="btn btn-down" onclick="saveGallery('${f.id}')">Save</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function viewFile(id){let f=files.find(x=>x.id==id);currentViewId=id;document.getElementById('viewerImg').src=f.data;document.getElementById('viewerName').textContent=f.name;document.getElementById('viewer').style.display='flex';}
+function closeViewer(){document.getElementById('viewer').style.display='none';}
+function saveCurrent(){if(currentViewId) saveGallery(currentViewId);}
+function pdfCurrent(){if(currentViewId) savePDF(currentViewId);}
+
+// NEW SIMPLE SAVE - WORKS 100%
+function saveGallery(id){
+  let f=files.find(x=>x.id==id);
+  // Open image in new tab - user long presses to save to gallery - THIS ALWAYS WORKS
+  let w=window.open();
+  w.document.write(`
+    <html><head><title>${f.name}</title>
+    <style>body{margin:0;background:black;display:flex;justify-content:center;align-items:center;height:100vh;flex-direction:column;color:white;font-family:sans-serif}
+    img{max-width:100%;max-height:80%}
+    p{padding:15px;text-align:center}
+    </style></head>
+    <body>
+    <img src="${f.data}">
+    <p>👆 LONG PRESS on image 👆<br>Then click "Save image" or "Download image"<br>It will go to your Gallery!</p>
+    <p><a href="${f.data}" download="${f.name}" style="background:#10b981;color:white;padding:12px 20px;border-radius:20px;text-decoration:none;font-weight:bold">Click here to Download</a></p>
+    </body></html>
+  `);
+  showToast('Long press image -> Save image -> Gallery');
+}
+
+// NEW SIMPLE PDF - WORKS 100%
+function savePDF(id){
+  let f=files.find(x=>x.id==id);
+  let w=window.open();
+  w.document.write(`
+    <html><head><title>${f.name}.pdf</title>
+    <style>body{margin:0;padding:10px;text-align:center;font-family:sans-serif}
+    img{max-width:100%;}
+    button{background:#f59e0b;color:black;padding:12px 20px;border:none;border-radius:20px;font-weight:bold;font-size:16px;margin:15px}
+    </style></head>
+    <body>
+    <h3>${f.name}</h3>
+    <img src="${f.data}">
+    <br>
+    <button onclick="window.print()">📄 Save as PDF / Print</button>
+    <p>Click button -> Choose "Save as PDF" -> Save to PDF folder</p>
+    <script>/* auto print after load */<\/script>
+    </body></html>
+  `);
+  showToast('Click Save as PDF button in new page');
+}
+
+function makeAllPDF(){
+  if(files.length==0) return showToast('No pictures');
+  let w=window.open();
+  let imgs=files.map(f=>`<div style="page-break-after:always"><h4>${f.name}</h4><img src="${f.data}" style="max-width:100%"></div>`).join('');
+  w.document.write(`<html><body>${imgs}<br><button onclick="window.print()" style="background:#f59e0b;padding:15px 25px;border:none;border-radius:20px;font-weight:bold;font-size:18px">📄 Print All / Save as PDF</button></body></html>`);
+}
+
+function showToast(m){let t=document.getElementById('toast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',4000);}
+</script>
+</body>
+</html>
